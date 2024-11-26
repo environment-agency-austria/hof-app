@@ -364,7 +364,7 @@ async function uploadFileToWfs(id, filename, filesize, mimetype, userids, file) 
   });
 }
 
-async function createFileContents(id, content, coordinate) {
+async function createFileContents(feature, id, content, coordinate) {
   let files = [];
   if(isOnline) {
     files = await fetchWfsFileMetadata(id);
@@ -380,7 +380,9 @@ async function createFileContents(id, content, coordinate) {
     }
   }
  
-  content.innerHTML = `<table id="fileTable" class="fileTable"> 
+  content.innerHTML = `
+  <div style="margin-top: 10px"><b>Dateien:</b></div>
+  <table id="fileTable" class="fileTable"> 
   <tr>
   <th align=left>Dateiname</th>
   <th align=left></th>
@@ -388,8 +390,8 @@ async function createFileContents(id, content, coordinate) {
   <th align=left>Sync</th>
   </tr>
   </table>`;
+
   const table = document.getElementById("fileTable");
-  
   for(let file of files) {
     const trFile = document.createElement("tr");
     table.append(trFile);
@@ -408,13 +410,14 @@ async function createFileContents(id, content, coordinate) {
 
     const tdDelete = document.createElement("td");
     trFile.append(tdDelete);
-    // Allow deletion only for owner - TODO
-    if(file.userids.split(',').includes('bauer1')) 
+
+    // Non-owners will only reveive empty permission data
+    if(file.userids && file.userids.length > 0)
     {
       const deleteLink = document.createElement("a");
       deleteLink.innerHTML = '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAACXBIWXMAABYlAAAWJQFJUiTwAAAAAmJLR0QA/4ePzL8AAAAHdElNRQfoCAYQKB0BpUZRAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI0LTA4LTA2VDE2OjQwOjI4KzAwOjAw9vSFoAAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNC0wOC0wNlQxNjo0MDoyOCswMDowMIepPRwAAAHISURBVEhL7Za9rgFREMf/u66IBokoREFBg4hK4xkIIjwD8QIKD6DQikqr1BOlhyDRqDQEkUh83p25Z5e91+5eN3T3l5zMzJ7dM2dmz8yudFXAG/mVg0qlgtVqBZvNxvblcoHD4UCn04HT6eRrRlg68Hq9vLgRVvuThXzIdDrlxUulEi90P5rNJt/T6/VYGqGLYDabwW63s+7xeFAoFDAajTAejxGJRHA4HHhOlmW+z+fzIRAIYDKZYLlc8tzpdEIwGNTSSbthut0uOXrJqFarYtXrVYtgPp+j3W6j3+9zahqNBs7nM6fDCpfLhXq9DrfbjVqthmw2i1Qq9TVJDu4pl8u8i2ehZ8LhsLBu/HjJap7/AkX8HdNTtFgsIEkSWq0W28lkkm1iOByyPhgM2DbC1MFut2O5Xq91klD1zWbD0ghTB3Qc76V29BRU/f7aI0wdvIJ/B5aYOlDPtVob+/2eJXE8HnXSCFMHfr8fiUQC6XSabaXKkclkWI/FYojH44hGo2wbIipaI5/P/7lVhEIhYd146Tt4VBMfQmpQCqijUq+nFNHn0QxqF9vtlvVcLsdSh4hER7FY5JCfGUp7Fk/reftfxZvrAPgEzoWq38Rr1WYAAAAASUVORK5CYII="/>';
       deleteLink.setAttribute("href", "#");
-      deleteLink.onclick = (e) => { e.preventDefault(); deleteFile(file.filename); setTimeout(() => createFileContents(id, content, coordinate), 100)}
+      deleteLink.onclick = (e) => { e.preventDefault(); deleteFile(file.filename); setTimeout(() => createFileContents(feature, id, content, coordinate), 100)}
       tdDelete.appendChild(deleteLink);
       //content.appendChild(document.createElement("br"));
     }
@@ -430,44 +433,47 @@ async function createFileContents(id, content, coordinate) {
 
   //Also re-create gpx layer when file content changed
   loadGPXFromFiles(map, gpxLayer);
+  
+  if(feature.get("owner") == localStorage.getItem("lastUser")) {
+    const fileInput =  document.createElement("input", {id : "fileInput"});
+    fileInput.setAttribute("type", "file");
+    content.appendChild(fileInput);
 
-  const fileInput =  document.createElement("input", {id : "fileInput"});
-  fileInput.setAttribute("type", "file");
-  content.appendChild(fileInput);
+    fileInput.addEventListener('change', async e => {
+      var file = e.target.files[0];
+      const mimetype = file.name.toLowerCase().endsWith(".gpx") ? "application/gpx+xml" : "application/octet-stream";
 
-  overlay.setPosition(coordinate);
+      let userIds = window.prompt('Beistrich-getrennte Liste von zusätzlich leseberechtigten Benutzern:');
+      if(userIds) {
+        userIds += ","
+      }
+      userIds += localStorage.getItem('lastUser'); //uploading user is always owner
 
-  fileInput.addEventListener('change', async e => {
-    var file = e.target.files[0];
-    const mimetype = file.name.toLowerCase().endsWith(".gpx") ? "application/gpx+xml" : "application/octet-stream";
+      const rawBytes = await file.arrayBuffer();
+      if(isOnline) {
+        await uploadFileToWfs(id, file.name, rawBytes.byteLength, mimetype, userIds, file);
+      }
 
-    let userIds = window.prompt('Beistrich-getrennte Liste von zusätzlich leseberechtigten Benutzern:');
-    if(userIds) {
-      userIds += ","
-    }
-    userIds += "bauer1";
+      // Upload file to local store too
+      const blob = new Blob([rawBytes], { type: mimetype });
+      const fileStore = idb.transaction('file', 'readwrite').objectStore('file');
+      fileStore.put({
+        uploadpending : isOnline ? 0 : 1, //TODO - set to  true in case upload succeeds
+        removalpending : 0,
+        gid : id,
+        mimetype : mimetype,
+        filesize : rawBytes.byteLength,
+        filename : file.name,
+        userids : userIds,
+        blob : blob
+      });
 
-    const rawBytes = await file.arrayBuffer();
-    if(isOnline) {
-      await uploadFileToWfs(id, file.name, rawBytes.byteLength, mimetype, userIds, file);
-    }
-
-    // Upload file to local store too
-    const blob = new Blob([rawBytes], { type: mimetype });
-    const fileStore = idb.transaction('file', 'readwrite').objectStore('file');
-    fileStore.put({
-      uploadpending : isOnline ? 0 : 1, //TODO - set to  true in case upload succeeds
-      removalpending : 0,
-      gid : id,
-      mimetype : mimetype,
-      filesize : rawBytes.byteLength,
-      filename : file.name,
-      userids : userIds,
-      blob : blob
+        createFileContents(feature, id, content, coordinate)
     });
 
-      createFileContents(id, content, coordinate)
-  });
+  }
+
+  overlay.setPosition(coordinate);
 }
 
 async function downloadFile(fileName) {
@@ -522,7 +528,32 @@ async function deleteFile(filename) {
           const props = feature.getProperties();
           const id = props["gid"];
 
-          createFileContents(id, content, evt.coordinate);
+          content.innerHTML = `
+            <div id="attrs">
+            <b>Eigenschaften:</b>
+            <table id="attrTable" class="fileTable"> 
+            <tr>
+            <th align=left>Eigenschaft</th>
+            <th align=left>Wert</th>
+            </tr>
+            </table>
+            </div>
+            <div id="files" />`
+            ;
+
+            const filesDiv = document.getElementById("files");
+
+            const attrRows = `
+              <tr><td>GID</td><td>${feature.get("gid")}</td></tr>
+              <tr><td>Name</td><td>${feature.get("sg_name")}</td></tr>
+              <tr><td>Eigentümer</td><td>${feature.get("owner")}</td></tr>
+              <tr><td>Bezirk</td><td>${feature.get("bezirk")}</td></tr>
+              <tr><td>Gemeinde</td><td>${feature.get("gemeinde")}</td></tr>
+              <tr><td>Fläche</td><td>${feature.get("flache_ha")}</td></tr>
+              `
+            document.getElementById("attrTable").innerHTML = attrRows;
+
+          createFileContents(feature, id, filesDiv, evt.coordinate);
       }
     })
   });
