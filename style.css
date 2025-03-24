@@ -69,3 +69,35 @@ table, th, td {
   border: 1px solid black;
   border-collapse: collapse;
 }
+
+
+
+
+#loginDiv {
+  width: 300px;
+  margin: 100px auto;
+  padding: 20px;
+  border: 1px solid #ccc;
+  text-align: center;
+}
+
+.input-row {
+  display: flex; /* Nutzt Flexbox, um Elemente in einer Zeile anzuordnen */
+  align-items: center; /* Zentriert Elemente vertikal in der Zeile */
+  margin-bottom: 10px;
+}
+
+.input-row label {
+  width: 80px; /* Gibt dem Label eine feste Breite */
+  text-align: left; /* Richtet den Text links aus */
+  margin-right: 10px;
+}
+
+.input-row input[type="text"],
+.input-row input[type="password"] {
+  flex-grow: 1; /* Lässt das Eingabefeld den verfügbaren Platz einnehmen */
+}
+
+#loginBtn {
+  margin-top: 10px;
+}

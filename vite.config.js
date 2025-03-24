@@ -1,19 +1,18 @@
 import * as fs from 'fs';
 import { VitePWA } from 'vite-plugin-pwa'
 
+
+const getHttps = require('localhost-https');
 export default {
   build: {
     sourcemap: true,
 	  outDir: 'docs',
     target: 'esnext'
   },
+  server : {
+      https: getHttps(),
+  },
   base: '',
-  /*server: {
-    https: {
-      pfx: fs.readFileSync('./cert/localhost.p12'),
-      passphrase: ''
-    }
-  },*/
   plugins : [
     VitePWA(
       { 
